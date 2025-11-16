@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Advanced Complex Plotter by VH</title>
+  <style>
+    /* --- THEME AND BASE STYLES --- */
+    :root{
+      --bg:#0f1724; --panel:#0b1220; --muted:#9aa4b2; --accent:#7dd3fc;
+      --text-main: #e6eef6; --text-muted: #9aa4b2; --border-color: rgba(255,255,255,0.04);
+      --input-bg: transparent; --shadow-color: rgba(2,6,23,.6); --intersect-color: #f87171;
+      --grid-axis: rgba(125,211,252,0.9); --grid-major: rgba(255,255,255,0.05); --grid-minor: rgba(255,255,255,0.03);
+      --canvas-bg-a: #071123; --canvas-bg-b: #001021;
+    }
+    body.light-mode{
+      --bg:#f1f5f9; --panel:#ffffff; --muted:#64748b; --accent:#0ea5e9;
+      --text-main: #0f172a; --text-muted: #475569; --border-color: rgba(0,0,0,0.1);
+      --input-bg: #f8fafc; --shadow-color: rgba(100,116,139,0.2); --intersect-color: #ef4444;
+      --grid-axis: rgba(2,132,199,0.9); --grid-major: rgba(0,0,0,0.08); --grid-minor: rgba(0,0,0,0.04);
+      --canvas-bg-a: #fdfdff; --canvas-bg-b: #f8fafc;
+    }
+    html,body{height:100%;margin:0;font-family:Inter, system-ui, Arial, sans-serif;background:var(--bg);color:var(--text-main); transition: background .3s, color .3s;}
+    .app{display:grid;grid-template-columns:380px 10px 1fr;height:100vh;gap:0;padding:12px}
+    .panel{background:var(--panel);padding:14px;border-radius:10px;box-shadow:0 6px 18px var(--shadow-color);overflow:auto; transition: background .3s, box-shadow .3s;}
+    h2{margin:0 0 8px 0;font-size:18px}
+    label{display:block;margin-top:8px;color:var(--text-muted);font-size:13px; font-weight: 500;}
+    input[type=text], select{width:100%;padding:8px;margin-top:6px;border-radius:6px;border:1px solid var(--border-color);background:var(--input-bg);color:inherit; box-sizing: border-box;}
+    button{margin-top:8px;padding:8px 10px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+    .items{margin-top:12px; max-height: 40vh; overflow-y: auto;}
+    .item{display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;background:rgba(125,211,252,0.02);margin-bottom:8px}
+    .swatch{width:22px;height:22px;border-radius:4px;flex:0 0 22px; border: 1px solid var(--border-color);}
+    .item .meta{flex:1; font-size: 14px;}
+    .item .meta input {font-size: inherit; padding: 4px; margin: 0; background: rgba(125,211,252,0.1);}
+    .item button{background:transparent;color:var(--text-muted);border:1px solid var(--border-color);padding:6px; font-size: 11px; font-weight: normal;}
+    canvas{width:100%;height:100%;display:block;border-radius:10px;box-shadow:inset 0 0 0 1px var(--border-color)}
+    .help{font-size:13px;color:var(--text-muted);margin-top:8px; line-height: 1.5;}
+    .controls{display:flex;gap:8px;align-items:center;margin-top:8px}
+    .muted{color:var(--text-muted)}
+    footer{margin-top:12px;font-size:12px;color:var(--text-muted)}
+    #themeToggle { position: absolute; top: 18px; right: 18px; font-size: 20px; background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 0;}
+    .char-buttons button { padding: 4px 10px; font-size: 16px; min-width: 30px; background: rgba(125,211,252,0.1); color: var(--text-main); border: 1px solid var(--border-color);}
+    #resizer {
+      cursor: col-resize;
+      background-color: var(--border-color);
+      transition: background-color .2s;
+      border-radius: 5px;
+      margin: 0 4px;
+      position: relative; /* Add this to position the button inside */
+    }
+    #collapseBtn {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 30px;
+    padding: 0;
+    margin: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--panel);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: background-color 0.2s;
+    }
+    #collapseBtn:hover {
+      background-color: var(--bg);
+    }
+    #collapseBtn svg {
+      width: 16px;
+      height: 16px;
+      transition: transform 0.3s ease;
+    }
+    
+    /* --- Collapsed State --- */
+    .app.sidebar-collapsed {
+      /* Use !important to override the inline style set by the JS resizer */
+      grid-template-columns: 0px 15px 1fr !important; 
+    }
+    .app.sidebar-collapsed .panel:first-child {
+      overflow: hidden;
+      padding: 0;
+    }
+    .app.sidebar-collapsed #resizer {
+      background-color: transparent;
+    }
+    .app.sidebar-collapsed #collapseBtn svg {
+      transform: rotate(180deg);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="panel">
+      <button id="themeToggle">◑</button>
+      <h2>Complex Plotter</h2>
+      <div class="help">
+        <strong>Vector:</strong> z=3+2i or z=(1+i)+(2-3i)<br>
+        <strong>Circle:</strong> |z-(1+2i)|=3 (use &lt;, &gt;, &le;, &ge; for inequalities)<br>
+        <strong>Perp bisector:</strong> |z-z1|=|z-z2| (inequalities supported)<br>
+        <strong>Half-line:</strong> arg(z-(1+2i))=0.785 (inequalities supported)</div>
+
+      <label for="expr">Expression</label>
+      <div class="controls" style="gap:4px; margin-top: 6px;">
+          <input id="expr" type="text" style="margin:0" placeholder="e.g. |z-(1+2i)| < 3"/>
+          <input id="color" type="color" value="#7dd3fc" style="padding:0; width: 32px; height: 32px; border:none; background: none;"/>
+      </div>
+      <div class="controls char-buttons" style="margin-top: 4px; flex-wrap: wrap;">
+          <button data-char="|">|</button>
+          <button data-char="i">i</button>
+          <button data-char="arg()">arg()</button>
+          <button data-char="<">&lt;</button>
+          <button data-char=">">&gt;</button>
+          <button data-char="<=">≤</button>
+          <button data-char=">=">≥</button>
+      </div>
+
+      <div class="controls">
+        <button id="addBtn">Add</button>
+        <button id="clearAll">Clear all</button>
+      </div>
+
+      <div class="items" id="items"></div>
+
+      <label>View controls</label>
+      <div class="controls">
+        <button id="resetView">Reset view</button>
+        <button id="fitView">Fit to objects</button>
+        <button id="saveBtn">Save</button>
+        <button id="loadBtn">Load</button>
+      </div>
+
+      <footer>Pan: drag • Zoom: wheel • Hover for coords • Edit by clicking <br><br> • Complex plotter by VH ¯\_(ツ)_/¯
+ </footer>
+    </div>
+    <div id="resizer">
+      <button id="collapseBtn" title="Toggle sidebar">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
+      </button>
+    </div>
+    <div class="panel" style="padding:8px;display:flex;flex-direction:column;">
+      <canvas id="c"></canvas>
+    </div>
+  </div>
+
+<script>
+// --- START OF SCRIPT ---
+
+// --- Utilities ---
+const Epsilon = 1e-9;
+function clamp(v,a,b){return Math.min(Math.max(v,a),b)}
+function parseComplex(s){
+  if (!s) return {ok:false};
+  s = s.toString().trim().replace(/\s+/g,'');
+  if(s.startsWith('(') && s.endsWith(')')) s = s.slice(1,-1);
+  if(s.match(/^i$/)) return {x:0,y:1,ok:true};
+  if(s.match(/^-i$/)) return {x:0,y:-1,ok:true};
+  let m = s.match(/^([+-]?\d*\.?\d+)$/);
+  if(m) return {x:parseFloat(m[1]),y:0,ok:true};
+  m = s.match(/^([+-]?\d*\.?\d+)i$/);
+  if(m) return {x:0,y:parseFloat(m[1]),ok:true};
+  m = s.match(/^([+-]?\d*\.?\d+)([+-]\d*\.?\d+)i$/);
+  if(m) return {x:parseFloat(m[1]),y:parseFloat(m[2]),ok:true};
+  return {ok:false};
+}
+function formatNum(n){return Math.abs(n) < Epsilon ? '0' : Number(n.toFixed(4)).toString();}
+
+function hslToHex(h, s, l) {
+  l /= 100;
+  const a = s * Math.min(l, 1 - l) / 100;
+  const f = n => {
+    const k = (n + h / 30) % 12;
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * color).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+function getRandomColor() {
+  const h = Math.floor(Math.random() * 360);
+  return hslToHex(h, 90, 65);
+}
+
+
+// --- Canvas and view ---
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let DPR = window.devicePixelRatio || 1;
+function fitCanvas(){
+  const r = canvas.getBoundingClientRect();
+  canvas.width = Math.floor(r.width * DPR);
+  canvas.height = Math.floor(r.height * DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize',()=>{fitCanvas();draw();});
+
+let view = {offsetX:0, offsetY:0, scale:40};
+let currentThemeColors = {};
+
+function updateThemeColors() {
+    const style = getComputedStyle(document.body);
+    currentThemeColors = {
+        axis: style.getPropertyValue('--grid-axis').trim(),
+        major: style.getPropertyValue('--grid-major').trim(),
+        minor: style.getPropertyValue('--grid-minor').trim(),
+        text: style.getPropertyValue('--text-main').trim(),
+        intersect: style.getPropertyValue('--intersect-color').trim(),
+        canvasBg: `linear-gradient(180deg, ${style.getPropertyValue('--canvas-bg-a').trim()} 0%, ${style.getPropertyValue('--canvas-bg-b').trim()} 100%)`
+    };
+    canvas.style.background = currentThemeColors.canvasBg;
+}
+
+
+function worldToScreen(x,y){
+  const cx = canvas.width/DPR/2 + view.offsetX + x*view.scale;
+  const cy = canvas.height/DPR/2 + view.offsetY - y*view.scale;
+  return {x:cx,y:cy};
+}
+function screenToWorld(sx,sy){
+  const x = (sx - (canvas.width/DPR/2) - view.offsetX)/view.scale;
+  const y = -((sy - (canvas.height/DPR/2) - view.offsetY)/view.scale);
+  return {x,y};
+}
+
+// --- Data model ---
+let items = []; // {id, type, color, raw, data, visible, displayMode}
+let idSeq = 1;
+let intersectionPoints = [];
+
+function addItem(raw,color){
+  const out = parseExpression(raw);
+  if(!out.ok) { alert('Could not parse expression:\n'+out.err); return; }
+  const it = {id:idSeq++, type:out.type, color, raw, data:out.data, visible: true, displayMode: 'line'};
+  items.push(it);
+  updateAll();
+  colorEl.value = getRandomColor();
+}
+
+function updateItem(id, raw){
+    const out = parseExpression(raw);
+    if(!out.ok) { alert('Could not parse expression:\n'+out.err); return false; }
+    const index = items.findIndex(i => i.id === id);
+    if(index > -1){
+        items[index].raw = raw;
+        items[index].type = out.type;
+        items[index].data = out.data;
+        updateAll();
+        return true;
+    }
+    return false;
+}
+
+function removeItem(id){ items = items.filter(i=>i.id!==id); updateAll(); }
+function toggleItemVisibility(id){
+    const item = items.find(i=>i.id===id);
+    if(item) item.visible = !item.visible;
+    updateAll();
+}
+function toggleVectorDisplay(id){
+    const item = items.find(i=>i.id===id);
+    if(item && item.type === 'vector') {
+        item.displayMode = item.displayMode === 'line' ? 'point' : 'line';
+    }
+    updateAll();
+}
+
+function updateAll(){
+    renderList();
+    calculateAllIntersections();
+    draw();
+}
+
+// --- Parser ---
+function parseModulusPart(s) {
+    s = s.trim();
+    if(s === '|z|') return {ok: true, z: {x:0, y:0}};
+    const match = s.match(/^\|z([+-])(.+)\|$/);
+    if (!match) return { ok: false };
+    const sign = match[1];
+    let complexStr = match[2];
+    if (complexStr.startsWith('(') && complexStr.endsWith(')')) {
+        complexStr = complexStr.slice(1, -1);
+    }
+    let c = parseComplex(complexStr);
+    if (!c.ok) return { ok: false };
+    if (sign === '+') { c.x = -c.x; c.y = -c.y; }
+    return { ok: true, z: c };
+}
+
+function parseExpression(s){
+  const original_s = s;
+  s = s.trim().replace(/ /g, '').replace('<=','≤').replace('>=','≥');
+  
+  let vMatch = s.match(/^z=(.+)$/i);
+  if(vMatch){
+      const expr = vMatch[1];
+      let opMatch = expr.match(/^\((.+)\)([+-])\((.+)\)$/);
+      if(opMatch){
+          let z1 = parseComplex(opMatch[1]); let z2 = parseComplex(opMatch[3]);
+          if(z1.ok && z2.ok){
+              let res = (opMatch[2] === '+') ? {x: z1.x + z2.x, y: z1.y + z2.y} : {x: z1.x - z2.x, y: z1.y - z2.y};
+              return {ok:true, type:'vector', data:{z:res}};
+          }
+      }
+      let c = parseComplex(expr);
+      if(c.ok) return {ok:true, type:'vector', data:{z:c}};
+  }
+
+  const opMatch = s.match(/[=<>≤≥]/);
+  if (opMatch) {
+      const op = opMatch[0];
+      const parts = s.split(op);
+      const left = parts[0], right = parts.slice(1).join(op);
+
+      if (left.startsWith('|z') && right.startsWith('|z')) {
+          const z1_res = parseModulusPart(left); const z2_res = parseModulusPart(right);
+          if (z1_res.ok && z2_res.ok) return {ok:true, type:'bisector', data:{z1:z1_res.z, z2:z2_res.z, op}};
+      }
+      if (left.startsWith('|z') && !isNaN(parseFloat(right))) {
+          const center_res = parseModulusPart(left); const r = parseFloat(right);
+          if (center_res.ok) return {ok:true, type:'circle', data:{center:center_res.z, r, op}};
+      }
+      if (left.startsWith('arg(')) {
+          const argMatch = left.match(/^arg\(z(?:-((?:\(.+\)|.+)))?\)$/);
+          if (argMatch) {
+              const complexStr = argMatch[1] || '0';
+              const z0 = parseComplex(complexStr);
+              const theta = parseFloat(right);
+              if (z0.ok && !isNaN(theta)) return {ok: true, type: 'half-line', data:{z0:z0.ok ? z0 : {x:0, y:0}, theta, op}};
+          }
+      }
+  }
+  
+  return {ok:false,err:`unrecognized format: ${original_s}`};
+}
+
+// --- Rendering ---
+function getNiceStep(targetPixelStep) {
+    const worldStep = targetPixelStep / view.scale;
+    const pow10 = Math.pow(10, Math.floor(Math.log10(worldStep)));
+    const relStep = worldStep / pow10;
+    if (relStep < 2) return pow10; if (relStep < 5) return 2 * pow10; return 5 * pow10;
+}
+
+function drawGrid() {
+    const w = canvas.width / DPR, h = canvas.height / DPR;
+    ctx.clearRect(0, 0, w, h);
+    const step = getNiceStep(70);
+    const worldBounds = { minX: screenToWorld(0, 0).x, maxX: screenToWorld(w, 0).x, minY: screenToWorld(0, h).y, maxY: screenToWorld(0, 0).y };
+    const first_x = Math.floor(worldBounds.minX / step) * step;
+    const first_y = Math.floor(worldBounds.minY / step) * step;
+    ctx.lineWidth = 1; ctx.strokeStyle = currentThemeColors.minor; ctx.beginPath();
+    const minorStep = step / 5;
+    const first_mx = Math.floor(worldBounds.minX / minorStep) * minorStep;
+    const first_my = Math.floor(worldBounds.minY / minorStep) * minorStep;
+    for (let x = first_mx; x < worldBounds.maxX; x += minorStep) { const sx = worldToScreen(x, 0).x; ctx.moveTo(sx, 0); ctx.lineTo(sx, h); }
+    for (let y = first_my; y < worldBounds.maxY; y += minorStep) { const sy = worldToScreen(0, y).y; ctx.moveTo(0, sy); ctx.lineTo(w, sy); }
+    ctx.stroke();
+    ctx.lineWidth = 1; ctx.strokeStyle = currentThemeColors.major; ctx.beginPath();
+    for (let x = first_x; x < worldBounds.maxX; x += step) { const sx = worldToScreen(x, 0).x; ctx.moveTo(sx, 0); ctx.lineTo(sx, h); }
+    for (let y = first_y; y < worldBounds.maxY; y += step) { const sy = worldToScreen(0, y).y; ctx.moveTo(0, sy); ctx.lineTo(w, sy); }
+    ctx.stroke();
+    const origin = worldToScreen(0, 0);
+    ctx.strokeStyle = currentThemeColors.axis; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(origin.x, 0); ctx.lineTo(origin.x, h); ctx.moveTo(0, origin.y); ctx.lineTo(w, origin.y); ctx.stroke();
+    ctx.fillStyle = currentThemeColors.text; ctx.font = '12px monospace';
+    for (let x = first_x; x < worldBounds.maxX; x += step) { if (Math.abs(x) < Epsilon) continue; const p = worldToScreen(x, 0); ctx.fillText(formatNum(x), p.x + 4, origin.y - 6); }
+    for (let y = first_y; y < worldBounds.maxY; y += step) { if (Math.abs(y) < Epsilon) continue; const p = worldToScreen(0, y); ctx.fillText(formatNum(y), origin.x + 6, p.y - 4); }
+}
+
+let hoverInfo = null;
+
+function draw(){
+  fitCanvas(); drawGrid();
+  for(let it of items){ if(!it.visible) continue; ctx.save(); ctx.strokeStyle = it.color; ctx.fillStyle = it.color; ctx.lineWidth = 2;
+    if(it.type==='vector') drawVector(it); if(it.type==='circle') drawCircle(it); if(it.type==='bisector') drawBisector(it); if(it.type==='half-line') drawHalfLine(it);
+    ctx.restore();
+  }
+  for(const pt of intersectionPoints){ const p = worldToScreen(pt.x, pt.y); ctx.fillStyle = currentThemeColors.intersect; ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2); ctx.fill(); }
+  if (hoverInfo) {
+      const p = worldToScreen(hoverInfo.pt.x, hoverInfo.pt.y); ctx.fillStyle = hoverInfo.isIntersection ? currentThemeColors.intersect : hoverInfo.color;
+      if(hoverInfo.isIntersection) { ctx.strokeStyle = currentThemeColors.text; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      } else { ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2); ctx.fill(); }
+      ctx.font = '13px monospace'; ctx.fillStyle = currentThemeColors.text; ctx.fillText(`${formatNum(hoverInfo.pt.x)} + ${formatNum(hoverInfo.pt.y)}i`, p.x + 10, p.y - 10);
+  }
+}
+
+function drawVector(it){
+  const z = it.data.z; const p = worldToScreen(z.x,z.y);
+  if(it.displayMode === 'point'){ 
+    ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fill();
+  } else {
+    const o = worldToScreen(0,0); ctx.beginPath(); ctx.moveTo(o.x,o.y); ctx.lineTo(p.x,p.y); ctx.stroke();
+    const ang = Math.atan2(p.y-o.y, p.x-o.x); const head = 10; ctx.beginPath(); ctx.moveTo(p.x,p.y);
+    ctx.lineTo(p.x - head*Math.cos(ang-0.4), p.y - head*Math.sin(ang-0.4)); ctx.lineTo(p.x - head*Math.cos(ang+0.4), p.y - head*Math.sin(ang+0.4));
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.font = '13px monospace'; ctx.fillStyle = currentThemeColors.text;
+  ctx.fillText(`${formatNum(z.x)} + ${formatNum(z.y)}i`, p.x + 8, p.y - 8);
+}
+
+function drawCircle(it){
+  const c = it.data.center; const r = it.data.r; const pc = worldToScreen(c.x,c.y); const screenR = Math.abs(r*view.scale);
+  if(['<','≤','>','≥'].includes(it.data.op)){
+    ctx.save(); ctx.fillStyle = it.color; ctx.globalAlpha = 0.2; const w = canvas.width/DPR, h = canvas.height/DPR; ctx.beginPath();
+    if(it.data.op === '>' || it.data.op === '≥'){ ctx.rect(0,0,w,h); ctx.arc(pc.x, pc.y, screenR, 0, Math.PI*2, true);
+    } else { ctx.arc(pc.x, pc.y, screenR, 0, Math.PI*2); }
+    ctx.fill(); ctx.restore();
+  }
+  if(it.data.op === '<' || it.data.op === '>') ctx.setLineDash([8, 8]);
+  ctx.beginPath(); ctx.arc(pc.x, pc.y, screenR, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = it.color; ctx.beginPath(); ctx.arc(pc.x, pc.y, 4,0,Math.PI*2); ctx.fill();
+
+  ctx.font = '13px monospace'; ctx.fillStyle = currentThemeColors.text;
+  ctx.fillText(`(${formatNum(c.x)}, ${formatNum(c.y)})`, pc.x + 8, pc.y - 8);
+  const radiusEdge = worldToScreen(c.x + r, c.y);
+  ctx.save(); ctx.strokeStyle = currentThemeColors.text; ctx.setLineDash([2, 3]); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pc.x, pc.y); ctx.lineTo(radiusEdge.x, radiusEdge.y); ctx.stroke();
+  ctx.restore();
+  ctx.fillText(`r=${formatNum(r)}`, pc.x + screenR/2 - 15, pc.y + 15);
+}
+
+function drawBisector(it){
+  const {z1, z2, op} = it.data;
+  const p1 = worldToScreen(z1.x,z1.y), p2 = worldToScreen(z2.x,z2.y);
+  const mx = (z1.x+z2.x)/2, my = (z1.y+z2.y)/2; const pm = worldToScreen(mx,my);
+  const dx = z2.x - z1.x, dy = z2.y - z1.y;
+  const perp_dx = -dy, perp_dy = dx;
+  
+  const far = (canvas.width + canvas.height) / view.scale;
+  const a = worldToScreen(mx + perp_dx*far, my + perp_dy*far);
+  const b = worldToScreen(mx - perp_dx*far, my - perp_dy*far);
+  
+  if(['<','≤','>','≥'].includes(op)){
+      ctx.save(); ctx.fillStyle = it.color; ctx.globalAlpha = 0.2;
+      const dot_z1 = (z1.x-mx)*dx + (z1.y-my)*dy;
+      const which_side = (op === '<' || op === '≤') ? Math.sign(dot_z1) : -Math.sign(dot_z1);
+      const c1 = worldToScreen(mx + perp_dx*far + dx*far*which_side, my + perp_dy*far + dy*far*which_side);
+      const c2 = worldToScreen(mx - perp_dx*far + dx*far*which_side, my - perp_dy*far + dy*far*which_side);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c2.x, c2.y); ctx.lineTo(c1.x, c1.y); ctx.closePath();
+      ctx.fill(); ctx.restore();
+  }
+  
+  if(op === '<' || op === '>') ctx.setLineDash([8, 8]);
+  ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = it.color; ctx.beginPath(); ctx.arc(p1.x,p1.y,4,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(p2.x,p2.y,4,0,Math.PI*2); ctx.fill();
+  
+  ctx.save(); ctx.fillStyle = 'orange'; ctx.beginPath(); ctx.arc(pm.x, pm.y, 3, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+
+  ctx.font = '13px monospace'; ctx.fillStyle = currentThemeColors.text;
+  ctx.fillText(`(${formatNum(z1.x)}, ${formatNum(z1.y)})`, p1.x+8, p1.y-8);
+  ctx.fillText(`(${formatNum(z2.x)}, ${formatNum(z2.y)})`, p2.x+8, p2.y-8);
+  ctx.fillText(`mid: (${formatNum(mx)}+${formatNum(my)}i)`, pm.x+8, pm.y+8);
+}
+
+function drawHalfLine(it) {
+    const { z0, theta, op } = it.data;
+    const p0 = worldToScreen(z0.x, z0.y);
+    const canvasTheta = -theta;
+    const canvasBaseline = 0; 
+    const far = (canvas.width + canvas.height) / view.scale * 2;
+    const rScreen = far * view.scale;
+    const a1 = ((canvasTheta % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
+    const a2 = canvasBaseline;
+    const diff = (a1 - a2 + 2*Math.PI) % (2*Math.PI);
+    const shortCCW = diff <= Math.PI;
+    let start, end, ccw;
+
+    if (op === "<" || op === "≤") { start = a2; end = a1; ccw = shortCCW; } 
+    else { start = a1; end = a2; ccw = shortCCW; }
+
+    if (["<","≤",">","≥"].includes(op)) {
+        ctx.save(); ctx.fillStyle = it.color; ctx.globalAlpha = 0.25;
+        ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.arc(p0.x, p0.y, rScreen, start, end, !ccw);
+        ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+    const endPt = worldToScreen( z0.x + far * Math.cos(theta), z0.y + far * Math.sin(theta) );
+    if (op === "<" || op === ">") ctx.setLineDash([8, 8]);
+    ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(endPt.x, endPt.y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = it.color; ctx.beginPath(); ctx.arc(p0.x, p0.y, 4, 0, Math.PI * 2); ctx.fill();
+
+    ctx.font = '13px monospace'; ctx.fillStyle = currentThemeColors.text;
+    ctx.fillText(`(${formatNum(z0.x)}, ${formatNum(z0.y)})`, p0.x+8, p0.y-8);
+}
+
+
+// --- UI bindings ---
+const exprEl = document.getElementById('expr'); const colorEl = document.getElementById('color');
+const addBtn = document.getElementById('addBtn'); const itemsEl = document.getElementById('items');
+const clearAllBtn = document.getElementById('clearAll'); const resetViewBtn = document.getElementById('resetView');
+const fitViewBtn = document.getElementById('fitView'); const themeToggle = document.getElementById('themeToggle');
+const saveBtn = document.getElementById('saveBtn'); const loadBtn = document.getElementById('loadBtn');
+
+addBtn.addEventListener('click', ()=>{ addItem(exprEl.value, colorEl.value); exprEl.value = ''; exprEl.focus(); });
+clearAllBtn.addEventListener('click', ()=>{ items=[]; updateAll(); });
+resetViewBtn.addEventListener('click', ()=>{ view={offsetX:0,offsetY:0,scale:40}; draw(); });
+fitViewBtn.addEventListener('click', fitViewToObjects);
+themeToggle.addEventListener('click', ()=>{ document.body.classList.toggle('light-mode'); updateThemeColors(); draw(); });
+saveBtn.addEventListener('click', saveGraphs);
+loadBtn.addEventListener('click', loadGraphs);
+
+document.querySelectorAll('.char-buttons button').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const char = btn.dataset.char; const start = exprEl.selectionStart, end = exprEl.selectionEnd; let val = exprEl.value;
+        if(char.endsWith('()')){ val = val.substring(0, start) + char + val.substring(end); exprEl.value = val; exprEl.selectionStart = exprEl.selectionEnd = start + char.length - 1;
+        } else { val = val.substring(0, start) + char + val.substring(end); exprEl.value = val; exprEl.selectionStart = exprEl.selectionEnd = start + char.length; }
+        exprEl.focus();
+    });
+});
+
+function renderList(){ itemsEl.innerHTML='';
+  for(let it of items){
+    const div = document.createElement('div'); div.className='item';
+    const sw = document.createElement('div'); sw.className='swatch'; sw.style.background = it.color;
+    sw.addEventListener('click', () => {
+                 const input = document.createElement('input');
+                 input.type = 'color';
+                 input.value = it.color;
+                 input.style.position = 'absolute';
+                 input.style.opacity = '0';
+                 document.body.appendChild(input);
+                 input.click();
+                 input.addEventListener('change', () => {
+                         it.color = input.value;
+                         sw.style.background = it.color;
+                         document.body.removeChild(input);
+                         draw();
+                    });
+                    input.addEventListener('blur', () => document.body.removeChild(input));
+           });
+    const visBtn = document.createElement('button'); visBtn.style.padding='4px'; visBtn.style.fontSize='16px'; visBtn.innerHTML = it.visible ? '👁️' : '🚫';
+    visBtn.addEventListener('click', ()=>toggleItemVisibility(it.id));
+    const meta = document.createElement('div'); meta.className='meta';
+    const textDiv = document.createElement('div'); textDiv.style.fontWeight='600'; textDiv.textContent = it.raw;
+    const typeDiv = document.createElement('div'); typeDiv.className='muted'; typeDiv.textContent=it.type;
+    meta.appendChild(textDiv); meta.appendChild(typeDiv);
+    textDiv.addEventListener('click', ()=>{
+        textDiv.style.display = 'none'; const editInput = document.createElement('input'); editInput.type = 'text'; editInput.value = it.raw; meta.prepend(editInput); editInput.focus(); editInput.select();
+        const onFinishEditing = () => { const success = updateItem(it.id, editInput.value); if(success) it.raw = editInput.value; editInput.remove(); textDiv.textContent = it.raw; textDiv.style.display = 'block'; };
+        editInput.addEventListener('blur', onFinishEditing);
+        editInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') onFinishEditing(); if(e.key==='Escape'){ editInput.value=it.raw; onFinishEditing();} });
+    });
+    const del = document.createElement('button'); del.textContent='Delete'; del.addEventListener('click', ()=>{ removeItem(it.id); });
+    div.appendChild(sw); div.appendChild(visBtn); div.appendChild(meta);
+    if(it.type === 'vector'){
+        const displayToggle = document.createElement('button'); displayToggle.textContent = it.displayMode === 'line' ? 'Line' : 'Point';
+        displayToggle.addEventListener('click', ()=> toggleVectorDisplay(it.id));
+        div.appendChild(displayToggle);
+    }
+    div.appendChild(del); itemsEl.appendChild(div);
+  }
+}
+
+// --- Unified Interactions (Pan, Zoom, Resize, Hover) ---
+const resizer = document.getElementById('resizer');
+const collapseBtn = document.getElementById('collapseBtn');
+const app = document.querySelector('.app');
+const sidebar = app.children[0];
+let lastSidebarWidth = 380;
+
+// This state object tracks the current mouse-down action
+let interaction = {
+    type: null, // 'panning' or 'resizing'
+    last: { x: 0, y: 0 }
+};
+
+// --- Mouse Event Handlers ---
+
+function onMouseDown(e) {
+    // Determine interaction type based on the event target
+    const target = e.target;
+    if (target === canvas) {
+        interaction.type = 'panning';
+        canvas.style.cursor = 'grabbing';
+    } else if (target === resizer) {
+        interaction.type = 'resizing';
+        document.body.classList.add('resizing');
+    } else if (target === collapseBtn || collapseBtn.contains(target)) {
+        // This is a click, not a drag, so we handle it separately
+        return;
+    } else {
+        // Clicked on something else, do nothing
+        return;
+    }
+    
+    e.preventDefault();
+    interaction.last = { x: e.clientX, y: e.clientY };
+    
+    // Attach the universal move and up handlers
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+}
+
+function onMouseMove(e) {
+    if (!interaction.type) return; // Should not happen, but safe check
+
+    const dx = e.clientX - interaction.last.x;
+    const dy = e.clientY - interaction.last.y;
+    interaction.last = { x: e.clientX, y: e.clientY };
+
+    if (interaction.type === 'panning') {
+        view.offsetX += dx;
+        view.offsetY += dy;
+        draw();
+    } else if (interaction.type === 'resizing') {
+        let newWidth = sidebar.getBoundingClientRect().width + dx;
+        newWidth = clamp(newWidth, 250, 600);
+        lastSidebarWidth = newWidth;
+        app.style.gridTemplateColumns = `${newWidth}px 10px 1fr`;
+        draw();
+    }
+}
+
+function onMouseUp(e) {
+    // Clean up styles and state
+    if (interaction.type === 'panning') {
+        canvas.style.cursor = 'default';
+    } else if (interaction.type === 'resizing') {
+        document.body.classList.remove('resizing');
+    }
+    interaction.type = null;
+
+    // Remove the listeners to stop tracking mouse movement
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+}
+
+function onWheel(e) {
+    e.preventDefault();
+    const delta = -e.deltaY;
+    const zoomFactor = Math.exp(delta * 0.0015);
+    const mousePos = { x: e.offsetX, y: e.offsetY };
+    const before = screenToWorld(mousePos.x, mousePos.y);
+    view.scale *= zoomFactor;
+    view.scale = clamp(view.scale, 0.1, 800);
+    const after = screenToWorld(mousePos.x, mousePos.y);
+    view.offsetX += (after.x - before.x) * view.scale;
+    view.offsetY -= (after.y - before.y) * view.scale;
+    draw();
+}
+
+// Separate hover handler that is always active when not dragging
+function handleHoverMove(e) {
+    // Only handle hover if no drag action is active
+    if (!interaction.type) {
+        handleHover(e);
+    }
+}
+
+const toggleSidebar = () => {
+    const isCollapsed = app.classList.contains('sidebar-collapsed');
+    if (isCollapsed) {
+        app.classList.remove('sidebar-collapsed');
+        app.style.gridTemplateColumns = `${lastSidebarWidth}px 10px 1fr`;
+    } else {
+        const currentWidth = sidebar.getBoundingClientRect().width;
+        if (currentWidth > 50) {
+            lastSidebarWidth = currentWidth;
+        }
+        app.classList.add('sidebar-collapsed');
+    }
+    setTimeout(draw, 50);
+};
+
+
+// --- Attach Initial Event Listeners ---
+// Listen for a mousedown on the entire document to decide what to do
+document.addEventListener('mousedown', onMouseDown);
+
+// Hover is always active on the canvas
+canvas.addEventListener('mousemove', handleHoverMove);
+
+// Other specific listeners
+canvas.addEventListener('wheel', onWheel);
+canvas.addEventListener('mouseleave', () => { hoverInfo = null; draw(); });
+exprEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { addItem(exprEl.value, colorEl.value); exprEl.value = ''; } });
+collapseBtn.addEventListener('click', toggleSidebar);
+
+function fitViewToObjects(){
+    const visibleItems = items.filter(it => it.visible); if (visibleItems.length === 0) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const updateBounds = (x,y) => { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); };
+    visibleItems.forEach(it => {
+        if(it.type === 'vector'){ updateBounds(0,0); updateBounds(it.data.z.x, it.data.z.y); }
+        else if(it.type === 'circle'){ updateBounds(it.data.center.x - it.data.r, it.data.center.y - it.data.r); updateBounds(it.data.center.x + it.data.r, it.data.center.y + it.data.r);}
+        else if(it.type === 'bisector'){ updateBounds(it.data.z1.x, it.data.z1.y); updateBounds(it.data.z2.x, it.data.z2.y); }
+        else if(it.type === 'half-line'){ updateBounds(it.data.z0.x, it.data.z0.y); }
+    });
+    if(minX === Infinity){ minX = -5; maxX = 5; minY = -5; maxY = 5; }
+    const w = canvas.width/DPR, h = canvas.height/DPR;
+    const worldWidth = (maxX - minX) * 1.2 || 10; const worldHeight = (maxY - minY) * 1.2 || 10;
+    const newScaleX = w / worldWidth; const newScaleY = h / worldHeight;
+    view.scale = Math.min(newScaleX, newScaleY);
+    const centerX = (minX + maxX)/2, centerY = (minY + maxY)/2;
+    view.offsetX = w/2 - centerX * view.scale; view.offsetY = h/2 + centerY * view.scale;
+    draw();
+}
+
+// --- Hover and Intersection Logic ---
+function handleHover(e) {
+    const w = screenToWorld(e.offsetX, e.offsetY); const tolerance = 5 / view.scale; let closest = null;
+    for(const pt of intersectionPoints){ if(Math.hypot(w.x-pt.x, w.y-pt.y) < tolerance){ closest = {pt, isIntersection: true}; break; } }
+    if(!closest){
+        for (const it of items.filter(i=>i.visible)) {
+            let pt = null;
+            if (it.type === 'vector' && it.displayMode === 'line') {
+                const {x,y} = it.data.z; const dot = (w.x * x + w.y * y) / (x*x + y*y);
+                const t = clamp(dot, 0, 1); pt = {x: t * x, y: t * y};
+                if(Math.hypot(w.x-pt.x, w.y-pt.y) > tolerance) pt = null;
+            } else if (it.type === 'circle') {
+                const c = it.data.center; const dist_to_center = Math.hypot(w.x - c.x, w.y - c.y);
+                if (Math.abs(dist_to_center - it.data.r) < tolerance) { const angle = Math.atan2(w.y - c.y, w.x - c.x); pt = { x: c.x + it.data.r * Math.cos(angle), y: c.y + it.data.r * Math.sin(angle) }; }
+            } else if (it.type === 'bisector') {
+                const {z1, z2} = it.data; const mx = (z1.x+z2.x)/2, my = (z1.y+z2.y)/2;
+                const line_vec = {x: -(z2.y-z1.y), y: z2.x - z1.x}; const point_vec = {x: w.x - mx, y: w.y - my};
+                const dot = line_vec.x * point_vec.x + line_vec.y * point_vec.y; const len_sq = line_vec.x**2 + line_vec.y**2;
+                if(len_sq > Epsilon){ const t = dot / len_sq; pt = {x: mx + t * line_vec.x, y: my + t * line_vec.y}; if(Math.hypot(w.x-pt.x, w.y-pt.y) > tolerance) pt=null; }
+            } else if (it.type === 'half-line') {
+                const {z0, theta} = it.data; const line_dir = {x: Math.cos(theta), y: Math.sin(theta)};
+                const dot = (w.x - z0.x)*line_dir.x + (w.y - z0.y)*line_dir.y;
+                if (dot >= -Epsilon) { pt = {x: z0.x + dot * line_dir.x, y: z0.y + dot * line_dir.y}; if(Math.hypot(w.x-pt.x, w.y-pt.y) > tolerance) pt=null; }
+            }
+            if (pt) { closest = { pt, color: it.color, isIntersection: false }; }
+        }
+    }
+    hoverInfo = closest; draw();
+}
+
+function saveGraphs() {
+    const dataToSave = items.map(it => ({ raw: it.raw, color: it.color }));
+    const textData = JSON.stringify(dataToSave, null, 2);
+    const blob = new Blob([textData], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'graphs.IMgraph';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function loadGraphs() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.IMgraph,text/plain';
+    input.onchange = e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = readerEvent => {
+            try {
+                const loadedItems = JSON.parse(readerEvent.target.result);
+                if (!Array.isArray(loadedItems)) throw new Error("Invalid format");
+                items = []; // Clear current items
+                idSeq = 1; // Reset ID sequence
+                loadedItems.forEach(itemData => {
+                    if (itemData.raw && itemData.color) {
+                       const out = parseExpression(itemData.raw);
+                       if(out.ok) {
+                         const it = {id:idSeq++, type:out.type, color: itemData.color, raw: itemData.raw, data:out.data, visible: true, displayMode: 'line'};
+                         items.push(it);
+                       }
+                    }
+                });
+                updateAll();
+            } catch (err) {
+                alert('Failed to load or parse the file.\n' + err.message);
+            }
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
+
+
+function calculateAllIntersections() {
+    intersectionPoints = [];
+    const visibleItems = items.filter(it => it.visible);
+
+    const getGeom = (item) => {
+        if (item.type === 'vector') {
+            if (item.displayMode === 'point') return { type: 'point', p: item.data.z };
+            return { type: 'segment', p1: {x:0, y:0}, p2: item.data.z };
+        }
+        if (item.type === 'circle') return { type: 'circle', c: item.data.center, r: item.data.r };
+        if (item.type === 'bisector') {
+            const {z1, z2} = item.data;
+            return { type: 'line', p: {x: (z1.x+z2.x)/2, y: (z1.y+z2.y)/2}, d: {x: z1.y-z2.y, y: z2.x-z1.x} };
+        }
+        if (item.type === 'half-line') {
+            const {z0, theta} = item.data;
+            return { type: 'ray', p: z0, d: {x: Math.cos(theta), y: Math.sin(theta)} };
+        }
+        return null;
+    };
+    
+    for (let i = 0; i < visibleItems.length; i++) {
+        for (let j = i + 1; j < visibleItems.length; j++) {
+            const g1 = getGeom(visibleItems[i]);
+            const g2 = getGeom(visibleItems[j]);
+            if (!g1 || !g2) continue;
+            
+            const types = [g1.type, g2.type].sort().join('-');
+            let pts = [];
+
+            if (types === 'circle-circle') {
+                const d = Math.hypot(g2.c.x-g1.c.x, g2.c.y-g1.c.y);
+                if(!(d > g1.r+g2.r || d < Math.abs(g1.r-g2.r) || d < Epsilon)){
+                    const a = (g1.r*g1.r - g2.r*g2.r + d*d) / (2*d);
+                    const h = Math.sqrt(Math.max(0, g1.r*g1.r-a*a));
+                    const midX = g1.c.x+a*(g2.c.x-g1.c.x)/d, midY = g1.c.y+a*(g2.c.y-g1.c.y)/d;
+                    pts.push({x: midX+h*(g2.c.y-g1.c.y)/d, y: midY-h*(g2.c.x-g1.c.x)/d});
+                    if(h>Epsilon) pts.push({x: midX-h*(g2.c.y-g1.c.y)/d, y: midY+h*(g2.c.x-g1.c.x)/d});
+                }
+            } else if (types.includes('circle') && (types.includes('line') || types.includes('ray') || types.includes('segment'))){
+                const circle = g1.type === 'circle' ? g1 : g2;
+                const other = g1.type !== 'circle' ? g1 : g2;
+                const p = other.type === 'segment' ? other.p1 : other.p;
+                const d = other.type === 'segment' ? {x:other.p2.x-other.p1.x, y:other.p2.y-other.p1.y} : other.d;
+
+                const f = {x: p.x - circle.c.x, y: p.y - circle.c.y};
+                const a = d.x*d.x + d.y*d.y;
+                const b = 2 * (f.x*d.x + f.y*d.y);
+                const c = f.x*f.x + f.y*f.y - circle.r*circle.r;
+                const disc = b*b-4*a*c;
+                if(disc >= -Epsilon){
+                    const tVals = disc < Epsilon ? [-b/(2*a)] : [(-b+Math.sqrt(disc))/(2*a), (-b-Math.sqrt(disc))/(2*a)];
+                    tVals.forEach(t => {
+                        if(other.type === 'line' || (other.type === 'ray' && t >= -Epsilon) || (other.type === 'segment' && t >= -Epsilon && t <= 1+Epsilon)){
+                            pts.push({x: p.x + t*d.x, y: p.y + t*d.y});
+                        }
+                    });
+                }
+            } else if (types.includes('line') || types.includes('ray') || types.includes('segment')) {
+                const getParams = (g) => g.type === 'segment' ? {p:g.p1, d:{x:g.p2.x-g.p1.x, y:g.p2.y-g.p1.y}} : {p:g.p, d:g.d};
+                const l1 = getParams(g1), l2 = getParams(g2);
+                const det = l1.d.x * l2.d.y - l1.d.y * l2.d.x;
+                if(Math.abs(det) > Epsilon){
+                    const t = ((l2.p.x - l1.p.x) * l2.d.y - (l2.p.y - l1.p.y) * l2.d.x) / det;
+                    const u = ((l2.p.x - l1.p.x) * l1.d.y - (l2.p.y - l1.p.y) * l1.d.x) / det;
+                    const check = (g, param) => g.type === 'line' || (g.type === 'ray' && param >= -Epsilon) || (g.type === 'segment' && param >= -Epsilon && param <= 1 + Epsilon);
+                    if(check(g1,t) && check(g2,u)) pts.push({x: l1.p.x + t * l1.d.x, y: l1.p.y + t * l1.d.y});
+                }
+            } else if (types.includes('point')) {
+                const pt = g1.type === 'point' ? g1.p : g2.p;
+                const other = g1.type !== 'point' ? g1 : g2;
+                let on = false;
+                if(other.type === 'circle') on = Math.abs(Math.hypot(pt.x-other.c.x, pt.y-other.c.y) - other.r) < Epsilon;
+                else if(other.type === 'line') on = Math.abs((pt.x-other.p.x)*other.d.y - (pt.y-other.p.y)*other.d.x) < Epsilon;
+                else if(other.type === 'ray'){
+                    const onLine = Math.abs((pt.x-other.p.x)*other.d.y - (pt.y-other.p.y)*other.d.x) < Epsilon;
+                    const correctDir = ((pt.x-other.p.x)*other.d.x >= -Epsilon && (pt.y-other.p.y)*other.d.y >= -Epsilon);
+                    on = onLine && correctDir;
+                } else if(other.type === 'segment'){
+                     const onLine = Math.abs((pt.x-other.p1.x)*(other.p2.y-other.p1.y) - (pt.y-other.p1.y)*(other.p2.x-other.p1.x)) < Epsilon;
+                     const inBounds = pt.x >= Math.min(other.p1.x, other.p2.x)-Epsilon && pt.x <= Math.max(other.p1.x, other.p2.x)+Epsilon &&
+                                    pt.y >= Math.min(other.p1.y, other.p2.y)-Epsilon && pt.y <= Math.max(other.p1.y, other.p2.y)+Epsilon;
+                     on = onLine && inBounds;
+                }
+                if (on) pts.push(pt);
+            }
+
+            pts.forEach(p => intersectionPoints.push(p));
+        }
+    }
+}
+
+
+// --- Init ---
+fitCanvas();
+updateThemeColors();
+draw();
+colorEl.value = getRandomColor();
+</script>
+</body>
+</html>
