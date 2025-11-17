@@ -92,6 +92,30 @@
     .app.sidebar-collapsed #collapseBtn svg {
       transform: rotate(180deg);
     }
+    /* --- Mobile Responsive Layout --- */
+    @media (max-width: 768px) {
+      .app {
+        /* Switch to a vertical layout */
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr; /* Sidebar height is auto, canvas takes the rest */
+        padding: 8px;
+        gap: 8px;
+      }
+
+      .items {
+        max-height: 25vh; /* Adjust list height for smaller screens */
+      }
+
+      /* Hide the resizer bar, as vertical resizing is less common/useful on mobile */
+      #resizer {
+        display: none;
+      }
+
+      /* If the sidebar is collapsed, it truly takes up no space */
+      .app.sidebar-collapsed {
+        grid-template-rows: 0px 1fr !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -135,7 +159,7 @@
         <button id="loadBtn">Load</button>
       </div>
 
-      <footer>Pan: drag • Zoom: wheel • Hover for coords • Edit by clicking <br><br> • Complex plotter by VH ¯\_(ツ)_/¯
+      <footer>Pan: drag • Zoom: wheel • Hover for coords • Edit by clicking <br><br> • Complex plotter by MrMysteryV ¯\_(ツ)_/¯
  </footer>
     </div>
     <div id="resizer">
@@ -562,45 +586,96 @@ const app = document.querySelector('.app');
 const sidebar = app.children[0];
 let lastSidebarWidth = 380;
 
-// This state object tracks the current mouse-down action
+// This state object tracks the current interaction
 let interaction = {
-    type: null, // 'panning' or 'resizing'
-    last: { x: 0, y: 0 }
+    type: null, // 'panning', 'resizing', 'pinching', or 'inspecting-drag'
+    last: { x: 0, y: 0 },
+    pinchInitialDist: 0
 };
 
-// --- Mouse Event Handlers ---
+// Helper to get consistent {offsetX, offsetY} from mouse or touch events
+function getPointFromEvent(e) {
+    const canvasRect = canvas.getBoundingClientRect();
+    const point = e.touches ? e.touches[0] : e;
+    return {
+        offsetX: point.clientX - canvasRect.left,
+        offsetY: point.clientY - canvasRect.top
+    };
+}
 
-function onMouseDown(e) {
-    // Determine interaction type based on the event target
+// --- Event Handlers ---
+
+function onInteractionStart(e) {
     const target = e.target;
-    if (target === canvas) {
-        interaction.type = 'panning';
-        canvas.style.cursor = 'grabbing';
-    } else if (target === resizer) {
+    
+    if (e.touches && e.touches.length === 2) {
+        interaction.type = 'pinching';
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        interaction.pinchInitialDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+    } 
+    else if (target === resizer) {
         interaction.type = 'resizing';
         document.body.classList.add('resizing');
-    } else if (target === collapseBtn || collapseBtn.contains(target)) {
-        // This is a click, not a drag, so we handle it separately
-        return;
-    } else {
-        // Clicked on something else, do nothing
+    } 
+    else if (target === canvas) {
+        const point = getPointFromEvent(e);
+        handleHover({ offsetX: point.offsetX, offsetY: point.offsetY });
+
+        if (hoverInfo) {
+            // A point on a line was touched. Start the drag-to-inspect mode.
+            interaction.type = 'inspecting-drag';
+        } else {
+            // An empty area was touched. Start panning.
+            interaction.type = 'panning';
+            canvas.style.cursor = 'grabbing';
+        }
+    } 
+    else {
         return;
     }
     
     e.preventDefault();
-    interaction.last = { x: e.clientX, y: e.clientY };
+
+    const point = e.touches ? e.touches[0] : e;
+    interaction.last = { x: point.clientX, y: point.clientY };
     
-    // Attach the universal move and up handlers
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('mousemove', onInteractionMove);
+    window.addEventListener('mouseup', onInteractionEnd);
+    window.addEventListener('touchmove', onInteractionMove, { passive: false });
+    window.addEventListener('touchend', onInteractionEnd);
 }
 
-function onMouseMove(e) {
-    if (!interaction.type) return; // Should not happen, but safe check
+function onInteractionMove(e) {
+    if (!interaction.type) return;
+    e.preventDefault();
 
-    const dx = e.clientX - interaction.last.x;
-    const dy = e.clientY - interaction.last.y;
-    interaction.last = { x: e.clientX, y: e.clientY };
+    if (interaction.type === 'pinching') {
+        if (e.touches.length < 2) return;
+        const t1 = e.touches[0]; const t2 = e.touches[1];
+        const newDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        const zoomFactor = newDist / interaction.pinchInitialDist;
+        const midPoint = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
+        const canvasRect = canvas.getBoundingClientRect();
+        const mousePos = { x: midPoint.x - canvasRect.left, y: midPoint.y - canvasRect.top };
+
+        const before = screenToWorld(mousePos.x, mousePos.y);
+        view.scale *= zoomFactor;
+        view.scale = clamp(view.scale, 0.1, 800);
+        const after = screenToWorld(mousePos.x, mousePos.y);
+        
+        view.offsetX += (after.x - before.x) * view.scale;
+        view.offsetY -= (after.y - before.y) * view.scale;
+        
+        interaction.pinchInitialDist = newDist;
+        draw();
+        return;
+    }
+    
+    const point = e.touches ? e.touches[0] : e;
+    const dx = point.clientX - interaction.last.x;
+    const dy = point.clientY - interaction.last.y;
+    interaction.last = { x: point.clientX, y: point.clientY };
 
     if (interaction.type === 'panning') {
         view.offsetX += dx;
@@ -612,21 +687,44 @@ function onMouseMove(e) {
         lastSidebarWidth = newWidth;
         app.style.gridTemplateColumns = `${newWidth}px 10px 1fr`;
         draw();
+    } else if (interaction.type === 'inspecting-drag') {
+        // This is the key logic for "track-then-lock"
+        const lastValidHover = hoverInfo; // Store the last good point
+        const eventPoint = getPointFromEvent(e);
+        handleHover({ offsetX: eventPoint.offsetX, offsetY: eventPoint.offsetY });
+        
+        // If the finger moved off all lines, handleHover sets hoverInfo to null.
+        // In that case, we restore the last valid point.
+        if (hoverInfo === null) {
+            hoverInfo = lastValidHover;
+        }
+        draw(); // Redraw with the (potentially restored) hover info
     }
 }
 
-function onMouseUp(e) {
-    // Clean up styles and state
-    if (interaction.type === 'panning') {
-        canvas.style.cursor = 'default';
-    } else if (interaction.type === 'resizing') {
-        document.body.classList.remove('resizing');
+function onInteractionEnd(e) {
+    if (interaction.type === 'pinching' && e.touches && e.touches.length === 1) {
+        const point = getPointFromEvent(e);
+        handleHover({ offsetX: point.offsetX, offsetY: point.offsetY });
+        interaction.type = hoverInfo ? 'inspecting-drag' : 'panning';
+        interaction.last = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        return; 
     }
+
+    canvas.style.cursor = 'default';
+    document.body.classList.remove('resizing');
+    
+    if (interaction.type === 'inspecting-drag') {
+        hoverInfo = null;
+        draw();
+    }
+    
     interaction.type = null;
 
-    // Remove the listeners to stop tracking mouse movement
-    window.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('mouseup', onMouseUp);
+    window.removeEventListener('mousemove', onInteractionMove);
+    window.removeEventListener('mouseup', onInteractionEnd);
+    window.removeEventListener('touchmove', onInteractionMove);
+    window.removeEventListener('touchend', onInteractionEnd);
 }
 
 function onWheel(e) {
@@ -643,14 +741,6 @@ function onWheel(e) {
     draw();
 }
 
-// Separate hover handler that is always active when not dragging
-function handleHoverMove(e) {
-    // Only handle hover if no drag action is active
-    if (!interaction.type) {
-        handleHover(e);
-    }
-}
-
 const toggleSidebar = () => {
     const isCollapsed = app.classList.contains('sidebar-collapsed');
     if (isCollapsed) {
@@ -658,27 +748,27 @@ const toggleSidebar = () => {
         app.style.gridTemplateColumns = `${lastSidebarWidth}px 10px 1fr`;
     } else {
         const currentWidth = sidebar.getBoundingClientRect().width;
-        if (currentWidth > 50) {
-            lastSidebarWidth = currentWidth;
-        }
+        if (currentWidth > 50) lastSidebarWidth = currentWidth;
         app.classList.add('sidebar-collapsed');
     }
     setTimeout(draw, 50);
 };
 
-
 // --- Attach Initial Event Listeners ---
-// Listen for a mousedown on the entire document to decide what to do
-document.addEventListener('mousedown', onMouseDown);
+document.addEventListener('mousedown', onInteractionStart);
+document.addEventListener('touchstart', onInteractionStart, { passive: false });
 
-// Hover is always active on the canvas
-canvas.addEventListener('mousemove', handleHoverMove);
-
-// Other specific listeners
-canvas.addEventListener('wheel', onWheel);
+canvas.addEventListener('wheel', onWheel, { passive: false });
 canvas.addEventListener('mouseleave', () => { hoverInfo = null; draw(); });
 exprEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { addItem(exprEl.value, colorEl.value); exprEl.value = ''; } });
 collapseBtn.addEventListener('click', toggleSidebar);
+
+// Desktop hover (when mouse moves without being clicked)
+window.addEventListener('mousemove', (e) => {
+    if (!interaction.type && e.target === canvas) {
+        handleHover(e);
+    }
+});
 
 function fitViewToObjects(){
     const visibleItems = items.filter(it => it.visible); if (visibleItems.length === 0) return;
