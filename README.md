@@ -4,4 +4,4 @@ Thank you to this discussion for helping me set up the github page: https://gith
 
 Made with the help of Gemini 3 Pro
 
-Link to website: https://mrmysteryv.github.io/Complex-Imaginary-plotter
+Link to website: https://mrmysteryv.github.io/Complex-Imaginary-Plotter
